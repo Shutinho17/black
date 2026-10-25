@@ -96,7 +96,8 @@ int main(int argc, char **argv) {
   logic_t logic = logic_t::ltlp;
   std::vector<std::string> ap;
   bool ap_set = false;
-
+  std::vector<black::formula> F;
+  
   // Parsing CLI arguments
   int i=1;
   while (i < argc) {
@@ -151,10 +152,14 @@ int main(int argc, char **argv) {
 
   // Generate <num> random formulas
   for (int j=0; j<num; j++) {
-    formula f = logic == 
+    black::formula f = logic == 
       logic_t::ltl ? 
         black::random_ltl_formula(gen, sigma, dim, ap) :
         black::random_ltlp_formula(gen, sigma, dim, ap);
+    F.push_back(f);
+  }
+
+  for (const auto &f : F){
     std::cout << to_string(f) << "\n";
   }
 
