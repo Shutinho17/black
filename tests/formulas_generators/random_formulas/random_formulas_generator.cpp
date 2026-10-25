@@ -52,6 +52,7 @@ void help() {
       << "\t--dim <x>   : Dimension of each generated formula, must be x>0.\n"
       << "\t            : Default is a random number between " << DIM_MIN
       << " and " << DIM_MAX << ".\n"
+      << "\t--md <x>    : Maximal model depth, must be x>0.\n"
       << "\t--ap <xs>   : Set of propositional given in the form '[p,q,..]'.\n"
       << "\t            : Default is a set '[p1,..,pn]' with n the log2 of the"
       << "\n"
@@ -92,11 +93,10 @@ int main(int argc, char **argv) {
   std::mt19937 gen((std::random_device())());
   std::uniform_int_distribution<> distrib(DIM_MIN, DIM_MAX);
   unsigned int s = 0;
-  int num = 1, dim = distrib(gen);
+  int num = 1, dim = distrib(gen), md = dim;
   logic_t logic = logic_t::ltlp;
   std::vector<std::string> ap;
   bool ap_set = false;
-  std::vector<black::formula> F;
   
   // Parsing CLI arguments
   int i=1;
@@ -124,6 +124,12 @@ int main(int argc, char **argv) {
         std::cerr << "Invalid argument: " << e.what() << "\n";
         exit(1);
       }
+    } else if (std::strcmp(argv[i], "--md") == 0) {
+      try {
+        md = std::stoi(argv[++i]);
+      } catch (const std::invalid_argument& e) {
+        std::cerr << "Invalid argument: " << e.what() << "\n";
+      }
     } else if (std::strcmp(argv[i], "--ap") == 0) {
       ap = parse_ap(argv[++i]);
       ap_set = true;
@@ -136,7 +142,7 @@ int main(int argc, char **argv) {
     ++i;
   }
 
-  if (num < 1 || dim < 1) {
+  if (num < 1 || dim < 1 || md < 1) {
     std::cerr << "Non positive arguments are not allowed.\n";
     help();
   }
@@ -149,13 +155,14 @@ int main(int argc, char **argv) {
   }
 
   alphabet sigma;
+  std::vector<black::formula> F;
 
   // Generate <num> random formulas
   for (int j=0; j<num; j++) {
     black::formula f = logic == 
       logic_t::ltl ? 
-        black::random_ltl_formula(gen, sigma, dim, ap) :
-        black::random_ltlp_formula(gen, sigma, dim, ap);
+        black::random_ltl_formula(gen, sigma, dim, md, ap) :
+        black::random_ltlp_formula(gen, sigma, dim, md, ap);
     F.push_back(f);
   }
 

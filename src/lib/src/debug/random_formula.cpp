@@ -54,6 +54,7 @@ namespace black_internal::random {
         fragment frag,
         const std::vector<std::string>& symbols
     ) : _gen{gen}, _sigma{sigma},
+        _nm_binary_ops(nm_binary_ops()), _nm_unary_ops(nm_unary_ops()),
         _binary_ops(binary_ops(frag)), _unary_ops(unary_ops(frag))
     {
       _ap = {_sigma.top(), _sigma.bottom()};
@@ -62,11 +63,13 @@ namespace black_internal::random {
       }
     }
 
-    formula random_formula(int n);
+    formula random_formula(int n, int *md);
 
   private:
     std::mt19937& _gen;
     alphabet& _sigma;
+    std::vector<binary::type> _nm_binary_ops;
+    std::vector<unary::type> _nm_unary_ops;
     std::vector<binary::type> _binary_ops;
     std::vector<unary::type> _unary_ops;
     std::vector<formula> _ap;            // AP U {True,False}
@@ -74,6 +77,16 @@ namespace black_internal::random {
     formula random_proposition() {
       std::uniform_int_distribution<size_t> dist(0, _ap.size()-1);
       return _ap[dist(_gen)];
+    }
+
+    unary::type random_nm_unary_operator() {
+      std::uniform_int_distribution<size_t> dist(0, _nm_unary_ops.size()-1);
+      return _nm_unary_ops[dist(_gen)];
+    }
+
+    binary::type random_nm_binary_operator() {
+      std::uniform_int_distribution<size_t> dist(0, _nm_binary_ops.size()-1);
+      return _nm_binary_ops[dist(_gen)];
     }
 
     unary::type random_unary_operator() {
@@ -86,13 +99,27 @@ namespace black_internal::random {
       return _binary_ops[dist(_gen)];
     }
 
+    std::vector<unary::type> nm_unary_ops(){
+      return { unary::type::negation };
+    }
+
+    std::vector<binary::type> nm_binary_ops(){
+      return {
+        binary::type::conjunction,
+        binary::type::disjunction,
+        binary::type::implication,
+        binary::type::iff
+      };
+    }
+
     std::vector<unary::type> unary_ops(fragment frag) {
       switch(frag) {
         case fragment::boolean:
-          return { unary::type::negation };
+          break;
+        /* case fragment::boolean:
+          return { unary::type::negation }; */
         case fragment::LTL:
           return {
-            unary::type::negation,
             unary::type::tomorrow,
             unary::type::w_tomorrow,
             unary::type::always,
@@ -100,7 +127,6 @@ namespace black_internal::random {
           };
         case fragment::LTLP:
           return {
-            unary::type::negation,
             unary::type::tomorrow,
             unary::type::w_tomorrow,
             unary::type::always,
@@ -117,18 +143,16 @@ namespace black_internal::random {
     std::vector<binary::type> binary_ops(fragment frag) {
       switch(frag) {
         case fragment::boolean:
+          break;
+        /*case fragment::boolean:
           return {
             binary::type::conjunction,
             binary::type::disjunction,
             binary::type::implication,
             binary::type::iff
-          };
+          };*/
         case fragment::LTL:
           return {
-            binary::type::conjunction,
-            binary::type::disjunction,
-            binary::type::implication,
-            binary::type::iff,
             binary::type::until,
             binary::type::release,
             binary::type::w_until,
@@ -136,10 +160,6 @@ namespace black_internal::random {
           };
         case fragment::LTLP:
           return {
-            binary::type::conjunction,
-            binary::type::disjunction,
-            binary::type::implication,
-            binary::type::iff,
             binary::type::until,
             binary::type::release,
             binary::type::w_until,
@@ -153,24 +173,50 @@ namespace black_internal::random {
 
   }; // class rand_formula_gen
 
-  formula rand_formula_gen::random_formula(int n) { 
+  formula rand_formula_gen::random_formula(int n, int *md) { 
     if (n == 1) {
       return random_proposition();
     } else {
       if (n == 2) {
-        return unary(random_unary_operator(), random_formula(n-1));
+        if (*(md) == 0) {
+          return unary(random_nm_unary_operator(), random_formula(n-1, 0));
+        } else {
+          std::uniform_int_distribution<> dist(0,1);
+          bool is_modal = dist(_gen);
+
+          // Toss a coin and choose unary op. between modal and non modal one
+          if (is_modal && *(md)>0) {
+            --(*md);
+            return unary(random_unary_operator(), random_formula(n-1, md));
+          } else {
+            return unary(random_nm_unary_operator(), random_formula(n-1, md));
+          }
+
+        }
       } else {
         std::uniform_int_distribution<> dist(0,1);
         bool is_unary = dist(_gen);
+        bool is_modal = dist(_gen);
         
-        if (is_unary) {
-          return unary(random_unary_operator(), random_formula(n-1));
+        // Same logic as before, toss 2 coin and choose between unary or binary
+        // operators and between modal and non modal ones
+        if (is_unary && is_modal && *(md) > 0) {
+          --(*md);
+          return unary(random_unary_operator(), random_formula(n-1, md));
+        } else if (is_unary && !is_modal) {
+          return unary(random_nm_unary_operator(), random_formula(n-1, md));
         } else {
           std::uniform_int_distribution<> bindist(1, n-2);
           int x = bindist(_gen);
-          formula phi = random_formula(x);
-          formula psi = random_formula(n-x-1);
-          return binary(random_binary_operator(), phi, psi);
+          formula phi = random_formula(x, md);
+          formula psi = random_formula(n-x-1, md);
+
+          if (is_modal && *(md) > 0){
+            --(*md);
+            return binary(random_binary_operator(), phi, psi);
+          } else {
+            return binary(random_nm_binary_operator(), phi, psi);
+          }       
         }
       }
     }
@@ -180,21 +226,20 @@ namespace black_internal::random {
       std::mt19937& gen, alphabet& sigma, int n,
       std::vector<std::string> const& symbols) {
     return rand_formula_gen{gen, sigma, rand_formula_gen::boolean, symbols}
-      .random_formula(n);
+      .random_formula(n, 0);
   }
 
   formula random_ltl_formula(
-      std::mt19937& gen, alphabet& sigma, int n,
+      std::mt19937& gen, alphabet& sigma, int n, int md,
       std::vector<std::string> const& symbols) {
     return rand_formula_gen{gen, sigma, rand_formula_gen::LTL, symbols}
-      .random_formula(n);
+      .random_formula(n, &md);
   }
 
   formula random_ltlp_formula(
-      std::mt19937& gen, alphabet& sigma, int n,
+      std::mt19937& gen, alphabet& sigma, int n, int md,
       std::vector<std::string> const& symbols) {
     return rand_formula_gen{gen, sigma, rand_formula_gen::LTLP, symbols}
-      .random_formula(n);
+      .random_formula(n, &md);
   }
-
 }

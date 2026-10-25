@@ -34,12 +34,12 @@ namespace black_internal::random {
 
   BLACK_EXPORT
   formula random_ltl_formula(
-      std::mt19937& gen, alphabet& sigma, int n,
+      std::mt19937& gen, alphabet& sigma, int n, int md,
       std::vector<std::string> const& symbols);
 
   BLACK_EXPORT
   formula random_ltlp_formula(
-      std::mt19937& gen, alphabet& sigma, int n,
+      std::mt19937& gen, alphabet& sigma, int n, int md,
       std::vector<std::string> const& symbols);
 
   BLACK_EXPORT
