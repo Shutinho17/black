@@ -158,6 +158,7 @@ set (
   src/solver/solver.cpp
   src/solver/core.cpp
   src/debug/random_formula.cpp
+  src/debug/random_models.cpp
 )
 
 if(Z3_FOUND)
@@ -179,6 +180,7 @@ endif()
 set (
   LIB_HEADERS
   include/black/internal/debug/random_formula.hpp
+  include/black/internal/debug/random_models.hpp
   include/black/internal/logic/core.hpp
   include/black/internal/logic/declare_fragment.hpp
   include/black/internal/logic/generation.hpp

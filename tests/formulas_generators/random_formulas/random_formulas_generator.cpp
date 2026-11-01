@@ -155,7 +155,7 @@ int main(int argc, char **argv) {
   }
 
   alphabet sigma;
-  std::vector<black::formula> F;
+  std::vector<black::formula> formulas;
 
   // Generate <num> random formulas
   for (int j=0; j<num; j++) {
@@ -163,10 +163,10 @@ int main(int argc, char **argv) {
       logic_t::ltl ? 
         black::random_ltl_formula(gen, sigma, dim, md, ap) :
         black::random_ltlp_formula(gen, sigma, dim, md, ap);
-    F.push_back(f);
+    formulas.push_back(f);
   }
 
-  for (const auto &f : F){
+  for (const auto &f : formulas){
     std::cout << to_string(f) << "\n";
   }
 
