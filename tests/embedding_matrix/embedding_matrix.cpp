@@ -17,12 +17,6 @@ const int DEFAULT_MDT = 5;
 const int MAX_ITERATE = 1000;
 const unsigned int DEFAULT_RNG = 17;
 
-/* Bisogna fare innazitutto una roba alla help dei generators.
-Quindi serie di variabili, con valori di default e tutto il resto
-Fatto questo pensiamo alla generazione di n modelli ed n formule
-Fatto questo printiamo la matrice a schermo, almeno capiamo che sta succ.
-Seguireanno update*/
-
 [[ noreturn ]] void help();
 std::vector<std::string> parse_ap(std::string);
 
@@ -70,6 +64,19 @@ std::vector<std::string> parse_ap(std::string str_ap) {
   if (!p.empty()) ap.push_back(p);
 
   return ap;
+}
+
+// Model checking operation on m AND !(f). If the tribool answer is true, then 
+// it means that our model checking is false leading to a 0 in the matrix.
+// If the tribool answer is false, the opposite occur, so 1 is returned.
+int eval(black::formula f, rand_model m, scope& xi, solver& slv) {
+  std::optional<black::formula> fs = m.ltl_encoding && !(f);
+  black::tribool answer = slv.solve(xi, *fs, false);
+
+  if (answer == true) {
+    return 0;
+  }
+  return 1;
 }
 
 int main(int argc, char **argv) {
@@ -154,6 +161,8 @@ int main(int argc, char **argv) {
   scope xi(sigma);
   solver slv;
 
+
+
   // naive implementation of matrix
 
   for (int i = 0; i < dim; ++i) {
@@ -168,12 +177,7 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < dim; ++i) {
     for (int j = 0; j < dim; ++j) {
-      std::optional<black::formula> f = models[i].ltl_encoding && formulas[j];
-      black::tribool answer = slv.solve(xi, *f, false);
-
-      if (answer == true) {
-        matrix[i][j] = 1;
-      }
+      matrix[i][j] = eval(formulas[i], models[j], xi, slv);
     }
   }
 
