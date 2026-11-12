@@ -7,6 +7,7 @@
 #include <iostream>
 #include <random>
 #include <cstring>
+#include <cmath>
 
 using namespace black;
 
@@ -66,7 +67,7 @@ std::vector<std::string> parse_ap(std::string str_ap) {
   return ap;
 }
 
-// Model checking operation on m AND !(f). If the tribool answer is true, then 
+// Model checking operation on 'm AND !(f)'. If the tribool answer is true, then 
 // it means that our model checking is false leading to a 0 in the matrix.
 // If the tribool answer is false, the opposite occur, so 1 is returned.
 int eval(black::formula f, rand_model m, scope& xi, solver& slv) {
@@ -78,6 +79,64 @@ int eval(black::formula f, rand_model m, scope& xi, solver& slv) {
   }
   return 1;
 }
+
+int row_similarity(std::vector<std::vector<int>> matrix, int i) {
+  int row_sim = 0;
+  
+  for (int k = 0; k < i-1; ++k) {
+    row_sim = cosine_similarity(matrix[k], matrix[i], i);
+    if (row_sim) {
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
+int col_similarity(std::vector<std::vector<int>> matrix, int i) {
+  int col_sim = 0;
+  std::vector<int> target_col;
+  
+  for (int k = 0; i < k; ++i) {
+    target_col.push_back(matrix[k][i]);
+  }
+
+
+  for (int k = 0; k < i-1; ++i) {
+    std::vector<int> k_col;
+    for (int j = 0; j < i; ++j) {
+      k_col.push_back(matrix[j][k]);
+    } 
+
+    col_sim = cosine_similarity(k_col, target_col, i);
+    if (col_sim) {
+      return 1;
+    }
+  }
+
+  return 0;
+}
+
+int cosine_similarity(std::vector<int> row_a, std::vector<int> row_b, int i) {
+  int sum_a = 0, sum_b = 0, numerator = 0;
+  int current_a, current_b;
+  for (int k = 0; k < i; ++k) {
+    current_a = row_a[k];
+    current_b = row_b[k];
+
+    numerator = current_a & current_b;
+    sum_a += row_a[k];
+    sum_b += row_b[k];
+  }
+
+  if ((sum_a == 0) || (sum_b == 0)) {
+    return (sum_a == 0 && sum_b == 0) ? 1 : 0;
+  }
+
+  return numerator / (std::sqrt(sum_a) * std::sqrt(sum_b));
+}
+
+// Aggiungere funzioni di controllo similarity di formule e modelli?
 
 int main(int argc, char **argv) {
   std::mt19937 gen((std::random_device())());
@@ -153,6 +212,7 @@ int main(int argc, char **argv) {
   std::uniform_int_distribution<> distrib(dim, dim * dim);
   edges = distrib(gen);
 
+  int row_sim, col_sim, iterations = 0;
   alphabet sigma;
   std::vector<black::formula> formulas;
   std::vector<black::rand_model> models;
@@ -161,23 +221,55 @@ int main(int argc, char **argv) {
   scope xi(sigma);
   solver slv;
 
-
-
   // naive implementation of matrix
 
-  for (int i = 0; i < dim; ++i) {
+  black::formula f = random_ltl_formula(gen, sigma, height, md, ap);
+  formulas.push_back(f);
+  rand_model m = random_model(gen, sigma, worlds, edges, ap);
+  models.push_back(m);
+
+  matrix[0][0] = eval(formulas[0], models[0], xi, slv);
+  
+
+  for (int i = 1; i < dim; ++i) {
     black::formula f = random_ltl_formula(gen, sigma, height, md, ap);
     formulas.push_back(f);
-  }
-
-  for (int i = 0; i < dim; ++i) {
     rand_model m = random_model(gen, sigma, worlds, edges, ap);
     models.push_back(m);
-  }
 
-  for (int i = 0; i < dim; ++i) {
-    for (int j = 0; j < dim; ++j) {
+    for (int j = 0; j < i; ++j) {
       matrix[i][j] = eval(formulas[i], models[j], xi, slv);
+      matrix[j][i] = eval(formulas[j], models[i], xi, slv);
+    }
+    matrix[i][i] = eval(formulas[i], models[i], xi, slv);
+
+    row_sim = row_similarity(matrix, i);
+    col_sim = col_similarity(matrix, i);
+
+    while (row_sim || col_sim) {
+      if (row_sim) {
+        formulas.pop_back();
+        formulas.push_back(random_ltl_formula(gen, sigma, height, md, ap));
+
+        for (int j = 0; j <= i; ++j) {
+          matrix[i][j] = eval(formulas[i], models[j], xi, slv);
+        }
+
+        row_sim = row_similarity(matrix, i);
+      }
+      
+      if (col_sim) {
+        models.pop_back();
+        models.push_back(random_model(gen, sigma, worlds, edges, ap));
+
+        for (int j = 0; j <= i; ++j) {
+          matrix[j][i] = eval(formulas[j], models[i], xi, slv);
+        }
+
+        col_sim = col_similarity(matrix, i);
+      }
+      
+      ++iterations;
     }
   }
 
