@@ -80,51 +80,15 @@ int eval(black::formula f, rand_model m, scope& xi, solver& slv) {
   return 1;
 }
 
-int row_similarity(std::vector<std::vector<int>> matrix, int i) {
-  int row_sim = 0;
-  
-  for (int k = 0; k < i-1; ++k) {
-    row_sim = cosine_similarity(matrix[k], matrix[i], i);
-    if (row_sim) {
-      return 1;
-    }
-  }
+// Implementation of cosine similarity function
+double cosine_similarity(
+  const std::vector<int>& row_a,
+  const std::vector<int>& row_b,
+  int i) {
 
-  return 0;
-}
-
-int col_similarity(std::vector<std::vector<int>> matrix, int i) {
-  int col_sim = 0;
-  std::vector<int> target_col;
-  
-  for (int k = 0; i < k; ++i) {
-    target_col.push_back(matrix[k][i]);
-  }
-
-
-  for (int k = 0; k < i-1; ++i) {
-    std::vector<int> k_col;
-    for (int j = 0; j < i; ++j) {
-      k_col.push_back(matrix[j][k]);
-    } 
-
-    col_sim = cosine_similarity(k_col, target_col, i);
-    if (col_sim) {
-      return 1;
-    }
-  }
-
-  return 0;
-}
-
-int cosine_similarity(std::vector<int> row_a, std::vector<int> row_b, int i) {
   int sum_a = 0, sum_b = 0, numerator = 0;
-  int current_a, current_b;
   for (int k = 0; k < i; ++k) {
-    current_a = row_a[k];
-    current_b = row_b[k];
-
-    numerator = current_a & current_b;
+    numerator += row_a[k] & row_b[k];
     sum_a += row_a[k];
     sum_b += row_b[k];
   }
@@ -134,6 +98,49 @@ int cosine_similarity(std::vector<int> row_a, std::vector<int> row_b, int i) {
   }
 
   return numerator / (std::sqrt(sum_a) * std::sqrt(sum_b));
+}
+
+// Checking whether the last row, so last formula, generated is semantically
+// similar to all of its predecessor, this is due by checking if the cosine
+// similarity is higher than a treshold
+bool row_similarity(const std::vector<std::vector<int>>& matrix, int i) {
+  double row_sim = 0;
+  
+  for (int k = 0; k < i; ++k) {
+    row_sim = cosine_similarity(matrix[k], matrix[i], i + 1);
+    if (row_sim >= 0.99) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Checking whether the last column, so last model, generated is semantically
+// similar to all of its predecessor, everythind is done in the same way as
+// for row_similarity
+bool col_similarity(const std::vector<std::vector<int>>& matrix, int i) {
+  double col_sim;
+  std::vector<int> target_col;
+  
+  for (int k = 0; k <= i; ++k) {
+    target_col.push_back(matrix[k][i]);
+  }
+
+
+  for (int k = 0; k < i; ++k) {
+    std::vector<int> k_col;
+    for (int j = 0; j <= i; ++j) {
+      k_col.push_back(matrix[j][k]);
+    } 
+
+    col_sim = cosine_similarity(k_col, target_col, i + 1);
+    if (col_sim >= 0.99) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // Aggiungere funzioni di controllo similarity di formule e modelli?
@@ -212,7 +219,6 @@ int main(int argc, char **argv) {
   std::uniform_int_distribution<> distrib(dim, dim * dim);
   edges = distrib(gen);
 
-  int row_sim, col_sim, iterations = 0;
   alphabet sigma;
   std::vector<black::formula> formulas;
   std::vector<black::rand_model> models;
@@ -221,55 +227,54 @@ int main(int argc, char **argv) {
   scope xi(sigma);
   solver slv;
 
-  // naive implementation of matrix
+  formulas.reserve(dim);
+  models.reserve(dim);
 
-  black::formula f = random_ltl_formula(gen, sigma, height, md, ap);
-  formulas.push_back(f);
-  rand_model m = random_model(gen, sigma, worlds, edges, ap);
-  models.push_back(m);
+  for (int i = 0; i < dim; ++i) {
+    formulas.push_back(random_ltl_formula(gen, sigma, height, md, ap));
+    models.push_back(random_model(gen, sigma, worlds, edges, ap));
 
-  matrix[0][0] = eval(formulas[0], models[0], xi, slv);
-  
+    int iterations = 0;
+    bool row_sim, col_sim;
+    bool sim_f = true, sim_m = true;
 
-  for (int i = 1; i < dim; ++i) {
-    black::formula f = random_ltl_formula(gen, sigma, height, md, ap);
-    formulas.push_back(f);
-    rand_model m = random_model(gen, sigma, worlds, edges, ap);
-    models.push_back(m);
-
-    for (int j = 0; j < i; ++j) {
-      matrix[i][j] = eval(formulas[i], models[j], xi, slv);
-      matrix[j][i] = eval(formulas[j], models[i], xi, slv);
-    }
-    matrix[i][i] = eval(formulas[i], models[i], xi, slv);
-
-    row_sim = row_similarity(matrix, i);
-    col_sim = col_similarity(matrix, i);
-
-    while (row_sim || col_sim) {
-      if (row_sim) {
-        formulas.pop_back();
-        formulas.push_back(random_ltl_formula(gen, sigma, height, md, ap));
-
+    while(iterations < MAX_ITERATE) {
+      if (sim_f) {
         for (int j = 0; j <= i; ++j) {
           matrix[i][j] = eval(formulas[i], models[j], xi, slv);
         }
-
-        row_sim = row_similarity(matrix, i);
       }
-      
+      if (sim_m) {
+        for (int j = 0; j <= i; ++j) {
+          if (j == i && sim_f) continue;
+          matrix[j][i] = eval(formulas[j], models[i], xi, slv);  
+        }
+      }
+
+      sim_f = false;
+      sim_m = false;
+      row_sim = row_similarity(matrix, i);
+      col_sim = col_similarity(matrix, i);
+
+      if (!row_sim && !col_sim) {
+        break;
+      }
+      if (row_sim) {
+        sim_f = true;
+        formulas.pop_back();
+        formulas.push_back(random_ltl_formula(gen, sigma, height, md, ap));
+      }
       if (col_sim) {
+        sim_m = true;
         models.pop_back();
         models.push_back(random_model(gen, sigma, worlds, edges, ap));
-
-        for (int j = 0; j <= i; ++j) {
-          matrix[j][i] = eval(formulas[j], models[i], xi, slv);
-        }
-
-        col_sim = col_similarity(matrix, i);
       }
-      
-      ++iterations;
+
+      iterations++;
+    }
+
+    if (iterations == MAX_ITERATE) {
+      std::cout << "Riga o colonna simile \n";
     }
   }
 
@@ -277,6 +282,6 @@ int main(int argc, char **argv) {
     for (int value : row) {
       std::cout << "\t" << value;
     }
-    std::cout << std::endl;
+    std::cout << "\n";
   }
 }
